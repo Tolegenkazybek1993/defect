@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Подсказка по МКБ-10</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 15px;
+      background: #f9f9f9;
+      color: #212529;
+    }
+    h2 {
+      color: #004080;
+      margin-bottom: 12px;
+    }
+    input[type="text"], button {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 12px;
+      font-size: 15px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      box-sizing: border-box;
+    }
+    button {
+      background-color: #004080;
+      color: white;
+      font-weight: bold;
+      border: none;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #002855;
+    }
+    .result {
+      margin-top: 15px;
+      padding: 12px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      font-size: 14px;
+      line-height: 1.4;
+      color: #333;
+    }
+    .section {
+      border-left: 5px solid #004080;
+      background: #e7f0fd;
+      margin-bottom: 12px;
+      padding: 10px 15px;
+      border-radius: 5px;
+    }
+    .warning {
+      border-left-color: #dc3545;
+      background: #f8d7da;
+      color: #842029;
+    }
+    .info {
+      border-left-color: #0d6efd;
+      background: #cfe2ff;
+      color: #084298;
+    }
+    .accent {
+      border-left-color: #ffc107;
+      background: #fff3cd;
+      color: #664d03;
+    }
+  </style>
+</head>
+<body>
+  <h2>🔍 Подсказка по МКБ-10</h2>
+  <input type="text" id="mkbInput" placeholder="Введите код МКБ-10, например J45" />
+  <button onclick="получитьПодсказку()">Найти</button>
+
+  <div id="result" class="result" style="display:none;"></div>
+
+  <script>
+    function получитьПодсказку() {
+      const код = document.getElementById('mkbInput').value.trim().toUpperCase();
+      const resultDiv = document.getElementById('result');
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '⏳ Идёт поиск...';
+
+      if (!код) {
+        resultDiv.innerHTML = '<b>Пожалуйста, введите код диагноза.</b>';
+        return;
+      }
+
+      google.script.run.withSuccessHandler(function(res) {
+        if (!res || res.length === 0) {
+          resultDiv.innerHTML = '<div class="warning"><b>❌ Код не найден в таблице "Правила".</b></div>';
+          return;
+        }
+
+        // Собираем уникальные записи по поводам и оплатам
+        const уникальные = new Set();
+        const блоки = [];
+        let остроеГОБМП = false;
+        let подозрениеОСМС = false;
+
+        res.forEach(row => {
+          const повод = row[0] || '';
+          const оплата = row[1] || '';
+          const ключ = повод + '|' + оплата;
+          if (!уникальные.has(ключ)) {
+            уникальные.add(ключ);
+            блоки.push(`Повод обращения: <b>${повод}</b><br>Тип оплаты: <b>${оплата}</b>`);
+          }
+          if (повод.toLowerCase().includes("обострение") && оплата.toLowerCase() === "гобмп") остроеГОБМП = true;
+          if (повод.toLowerCase().includes("социально") && оплата.toLowerCase() === "осмс") подозрениеОСМС = true;
+        });
+
+        let html = `<div class="section info"><b>📌 Из таблицы "Правила":</b><br>${блоки.join('<br><br>')}</div>`;
+
+        if (остроеГОБМП) {
+          html += `
+          <div class="section warning">
+            ⚠️ <b>Внимание:</b><br>
+            При поводе обращения <b>"Острое заболевание (состояние)/Обострение хронического заболевания"</b> с источником финансирования <b>ГОБМП</b> диагноз может требовать диспансерного наблюдения (приказ №149 МЗ РК).<br><br>
+            💡 <b>Рекомендуется:</b><br>
+            📋 Взять пациента на диспансерный учёт.<br>
+            ${подозрениеОСМС ? `✅ Или использовать повод обращения <b>"Подозрение на социально-значимое заболевание"</b> с источником финансирования <b>ОСМС</b>, если пациент не состоит на диспансерном учёте.` : `✅ Или использовать другие формы диагноза, допустимые с <b>ОСМС</b> при данном поводе.`}
+          </div>`;
+        }
+
+        if (код.startsWith("Z34") || код === "Z36") {
+          html += `
+          <div class="section warning">
+            ⚠️ <b>Внимание:</b><br>
+            Диагнозы <b>Z34</b> и <b>Z36</b> относятся к физиологическому течению беременности.<br><br>
+            💡 <b>Рекомендуется:</b><br>
+            Назначать услуги по ним только в рамках плановых явок. При осложнениях использовать коды: <b>Z35</b>, <b>O10–O16</b>, <b>O20–O29</b>.
+          </div>`;
+        }
+
+        resultDiv.innerHTML = html;
+
+      }).получитьПодсказку(код);
+    }
+  </script>
+</body>
+</html>
